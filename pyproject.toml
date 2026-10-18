@@ -35,6 +35,7 @@ overrides = "^7.4.0"
 packaging = "*"
 pandas = ">=2.0.0,<3"
 pettingzoo = "^1.22"
+ray = { version = ">=2.9.0", optional = true }
 sensai-utils = ">=1.6.0"
 tensorboard = "^2.5.0"
 # Torch 2.0.1 causes problems, see https://github.com/pytorch/pytorch/issues/100974
@@ -83,6 +84,7 @@ classic_control = ["pygame"]
 mujoco = ["mujoco", "imageio"]
 pybullet = ["pybullet"]
 envpool = ["envpool"]
+federated = ["ray"]
 robotics = ["gymnasium-robotics"]
 vizdoom = ["vizdoom"]
 eval = ["rliable", "arch", "joblib", "scipy", "jsonargparse", "docstring-parser"]

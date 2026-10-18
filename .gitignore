@@ -165,3 +165,6 @@ docs/conf.py
 
 # determinism test snapshots
 /test/resources/determinism/
+
+# agent
+.claude/
