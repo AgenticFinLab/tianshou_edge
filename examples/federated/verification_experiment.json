@@ -1,0 +1,80 @@
+{
+  "title": "Federated SAC verification experiment on gravity-heterogeneous Pendulum-v1",
+  "date": "2026-10-18",
+  "machine": "WSL2 laptop, 16 CPU cores, NVIDIA RTX 4050 Laptop GPU (runs executed on CPU)",
+  "library_versions": {
+    "tianshou": "2.0.1",
+    "torch": "2.11.0+cu128",
+    "gymnasium": "1.3.0"
+  },
+  "algorithm_config": {
+    "algorithm": "SAC",
+    "hidden_sizes": [256, 256],
+    "actor_critic_lr": 0.001,
+    "tau": 0.005,
+    "alpha": 0.2,
+    "alpha_mode": "fixed",
+    "batch_size": 256,
+    "utd_ratio": 1.0,
+    "twin_critics": "independently initialized instances (a deepcopied second critic would degenerate the clipped double-Q mechanism)",
+    "deterministic_eval": true
+  },
+  "federation_config": {
+    "num_clients": 3,
+    "gravities": [8.0, 10.0, 12.0],
+    "pole_mass": 1.0,
+    "pole_length": 1.0,
+    "methods": ["local_only", "fedavg_all", "fedavg_actor_only", "fedprox_actor"],
+    "fedprox_mu": 0.05,
+    "fedprox_scope": "actor parameters only (value networks are never pulled towards old global weights)",
+    "aggregation_weighting": "collected environment steps",
+    "seeds": [42, 43, 44]
+  },
+  "training_protocol": {
+    "warmup_env_steps_per_client": 10000,
+    "warmup_policy": "uniformly random actions",
+    "budget_env_steps_per_client": 60000,
+    "rounds": 15,
+    "env_steps_per_round": 4000,
+    "gradient_steps_per_round": 4000,
+    "training_envs_per_client": 4,
+    "replay_buffer_size_per_client": 100000,
+    "evaluation": {
+      "episodes_per_client_per_round": 20,
+      "policy": "deterministic (action distribution mode)",
+      "envs": "each client evaluates on its own gravity",
+      "note": "evaluation returns are not comparable across clients"
+    }
+  },
+  "calibration_local_only_baseline": {
+    "description": "single-process SAC, 60k environment steps each, one seed (0)",
+    "g8": {"final_mean_eval_return": -166.0, "range": [-197.0, -105.0]},
+    "g10": {"final_mean_eval_return": -178.0, "range": [-215.0, -149.0]},
+    "g12": {"final_mean_eval_return": -190.0, "range": [-340.0, -169.0]},
+    "verdict": "all three gravities learn stably (random policy baseline is about -1500)"
+  },
+  "federation_results": {
+    "metric": "per-client mean over the last 6 evaluation rounds; mean and std across 3 seeds (unit: seed)",
+    "local_only": {
+      "client0_g8": {"mean": -156.7, "std": 14.8},
+      "client1_g10": {"mean": -177.3, "std": 15.3},
+      "client2_g12": {"mean": -195.9, "std": 10.7}
+    },
+    "fedavg_all": {
+      "client0_g8": {"mean": -165.4, "std": 0.7},
+      "client1_g10": {"mean": -182.5, "std": 15.0},
+      "client2_g12": {"mean": -201.3, "std": 8.2}
+    },
+    "fedavg_actor_only": {
+      "client0_g8": {"mean": -162.5, "std": 17.1},
+      "client1_g10": {"mean": -169.4, "std": 5.3},
+      "client2_g12": {"mean": -194.0, "std": 3.1}
+    },
+    "fedprox_actor": {
+      "client0_g8": {"mean": -156.6, "std": 14.5},
+      "client1_g10": {"mean": -208.3, "std": 50.5},
+      "client2_g12": {"mean": -220.5, "std": 57.9}
+    }
+  },
+  "verdict": "All four methods learn stably on all clients across all seeds, validating the federated infrastructure. No aggregation method separates from local_only at this heterogeneity level (gravity +/- 20%); stronger or differently structured heterogeneity, more seeds, and sample-efficiency metrics are required before any method can be claimed better."
+}
