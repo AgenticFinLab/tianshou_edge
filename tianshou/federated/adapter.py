@@ -35,7 +35,12 @@ from tianshou.federated.weight_utils import (
 )
 from tianshou.utils.torch_utils import policy_within_training_step, torch_train_mode
 
-__all__ = ["FederatedAlgorithmAdapter", "OffPolicyFederatedAdapter", "SACFederatedAdapter"]
+__all__ = [
+    "FederatedAlgorithmAdapter",
+    "OffPolicyFederatedAdapter",
+    "SACFederatedAdapter",
+    "OnPolicyFederatedAdapter",
+]
 
 
 class FederatedAlgorithmAdapter(ABC):
@@ -245,3 +250,77 @@ class SACFederatedAdapter(OffPolicyFederatedAdapter):
         # fights their non-stationary TD targets (which must grow with the
         # return scale); the proximal term applies to the actor only.
         return [self.ACTOR_PREFIX]
+
+
+class OnPolicyFederatedAdapter(FederatedAlgorithmAdapter):
+    """Federated adapter for on-policy actor-critic algorithms (PPO, A2C).
+
+    On-policy rounds follow the collect -> multi-epoch update -> clear
+    lifecycle: each round collects fresh trajectories, performs
+    ``budget.num_updates`` epochs over them (``algorithm.update(repeat=...)``),
+    then resets the buffer. This differs from the off-policy loop on purpose —
+    the adapter does not flatten the two regimes into one interface.
+
+    Module map in tianshou 2.0.1 (PPO extends A2C):
+
+    * ``policy.actor.*`` — the stochastic policy; shared in every scope,
+    * ``critic.*`` — the value network; shared only in ``agg_scope="all"``,
+    * ``ret_rms.*`` — running statistics of observed returns; reward-scale
+      dependent, so always client-local (like SAC's alpha).
+
+    PPO has no target networks, so no target-sync logic applies.
+    """
+
+    ACTOR_PREFIX = "policy.actor."
+
+    def __init__(self, algorithm: Algorithm, agg_scope: str = "all") -> None:
+        if agg_scope not in ("all", "actor_only"):
+            raise ValueError(
+                f"unknown agg_scope {agg_scope!r}, expected 'all' or 'actor_only'"
+            )
+        super().__init__(algorithm)
+        self.agg_scope = agg_scope
+
+    @property
+    def shared_keys(self) -> list[str] | None:
+        if self.agg_scope == "actor_only":
+            return [self.ACTOR_PREFIX]
+        return None
+
+    @property
+    def exclude_prefixes(self) -> list[str]:
+        return ["ret_rms."]
+
+    @property
+    def prox_prefixes(self) -> list[str]:
+        return [self.ACTOR_PREFIX]
+
+    def local_train(
+        self,
+        collector: Collector,
+        buffer: ReplayBuffer,
+        budget: LocalBudget,
+    ) -> LocalTrainStats:
+        """Run one on-policy round: collect fresh data, update for
+        ``budget.num_updates`` epochs, then clear the buffer.
+
+        ``budget.num_env_steps_per_update`` is the number of fresh environment
+        steps collected per round (the parallel env count multiplies it).
+        """
+        with policy_within_training_step(self.algorithm.policy):
+            collect_stats = collector.collect(n_step=budget.num_env_steps_per_update)
+            with torch_train_mode(self.algorithm):
+                self.algorithm.update(
+                    buffer=buffer,
+                    batch_size=budget.batch_size,
+                    repeat=budget.num_updates,
+                )
+        # On-policy data is consumed within the round; the buffer is cleared
+        # (statistics kept) so the next round starts from fresh trajectories.
+        buffer.reset(keep_statistics=True)
+        returns = collect_stats.returns.tolist()
+        mean_return = float(np.mean(returns)) if returns else None
+        return LocalTrainStats(
+            num_steps=collect_stats.n_collected_steps,
+            mean_return=mean_return,
+        )

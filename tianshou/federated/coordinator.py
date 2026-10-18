@@ -62,6 +62,10 @@ class FederatedCoordinator:
         seed: int = 0,
         verbose: bool = True,
         on_round: Any | None = None,
+        eval_pre_post: bool = False,
+        checkpoint_dir: str | None = None,
+        resume_from: str | None = None,
+        resume_mode: str = "full",
     ) -> list[dict[str, Any]]:
         """Run ``num_rounds`` federated rounds.
 
@@ -79,48 +83,93 @@ class FederatedCoordinator:
         :param on_round: optional callback invoked with each round's summary
             right after it is produced; enables streaming results to disk so
             an interrupted run loses at most the current round.
+        :param eval_pre_post: if True, evaluate each selected client right
+            before the weight sync and right after it (before local
+            training), recording ``eval_pre`` / ``eval_post`` per client in
+            the summary. Off by default: it doubles the evaluation traffic.
+        :param checkpoint_dir: if given, a checkpoint is written after every
+            round (full client state; see
+            :mod:`tianshou.federated.persistence`).
+        :param resume_from: checkpoint directory to resume from; rounds are
+            counted from the checkpoint's ``next_round``.
+        :param resume_mode: ``"full"`` or ``"model_only"`` restore mode (see
+            :func:`~tianshou.federated.persistence.load_checkpoint`).
         :return: per-round summaries; evaluation results are stored per client
             under the ``"eval_returns"`` key.
         """
         if aggregation not in ("fedavg", "local_only"):
             raise ValueError(f"unknown aggregation {aggregation!r}")
+        from tianshou.federated.persistence import load_checkpoint, save_checkpoint
+
+        start_round = 1
+        if resume_from is not None:
+            manifest, global_weights, client_states = load_checkpoint(resume_from)
+            self.global_weights = global_weights
+            sync_futures = [
+                client.sync_weights.remote(global_weights) for client in self.clients
+            ]
+            self._ray.get(sync_futures)
+            load_futures = [
+                client.load_full_state.remote(state, mode=resume_mode)
+                for client, state in zip(self.clients, client_states, strict=True)
+            ]
+            self._ray.get(load_futures)
+            start_round = int(manifest["next_round"])
+
         rng = random.Random(seed)
         history: list[dict[str, Any]] = []
-        for round_idx in range(1, num_rounds + 1):
+        for round_idx in range(start_round, num_rounds + 1):
             selected_indices = self._sample_client_indices(clients_per_round, rng)
 
             if aggregation == "fedavg":
-                # Put the global weights into the object store once and hand
-                # the same reference to every selected client.
                 weights_ref = self._ray.put(self.global_weights)
-                futures = [
-                    self.clients[i].local_train_round.remote(weights_ref, budget)
-                    for i in selected_indices
-                ]
+                per_client_refs = [weights_ref] * len(selected_indices)
             else:
-                # Local-only: each client continues from its own weights, so
-                # the load inside the client is an identity operation. The
-                # round structure stays identical (fair budget comparison).
-                futures = [
-                    self.clients[i].local_train_round.remote(
-                        self._ray.put(self.weights_by_client[self.client_ids[i]]),
-                        budget,
-                    )
+                per_client_refs = [
+                    self._ray.put(self.weights_by_client[self.client_ids[i]])
                     for i in selected_indices
                 ]
-            updates: list[ClientUpdate] = self._ray.get(futures)
+
+            if eval_pre_post:
+                pre = self._evaluate_selected(selected_indices, eval_n_episode)
+                self._ray.get([
+                    self.clients[i].sync_weights.remote(ref)
+                    for i, ref in zip(selected_indices, per_client_refs, strict=True)
+                ])
+                post = self._evaluate_selected(selected_indices, eval_n_episode)
+                updates = self._ray.get([
+                    self.clients[i].local_train.remote(budget) for i in selected_indices
+                ])
+            else:
+                updates = self._ray.get([
+                    self.clients[i].local_train_round.remote(ref, budget)
+                    for i, ref in zip(selected_indices, per_client_refs, strict=True)
+                ])
+
             for update in updates:
                 self.weights_by_client[update.client_id] = update.weights
-
             if aggregation == "fedavg":
                 self.global_weights = fedavg_aggregate(updates)
 
             summary = self._make_summary(round_idx, updates)
             if eval_every is not None and round_idx % eval_every == 0:
                 summary["eval_returns"] = self._evaluate_all(eval_n_episode)
+            if eval_pre_post:
+                summary["eval_pre"] = pre
+                summary["eval_post"] = post
             history.append(summary)
             if on_round is not None:
                 on_round(summary)
+            if checkpoint_dir is not None:
+                client_states = self._ray.get([
+                    client.get_full_state.remote() for client in self.clients
+                ])
+                save_checkpoint(
+                    checkpoint_dir,
+                    manifest={"next_round": round_idx + 1},
+                    global_weights=self.global_weights,
+                    client_states=client_states,
+                )
             if verbose:
                 self._print_summary(summary)
         return history
@@ -151,11 +200,20 @@ class FederatedCoordinator:
         }
 
     def _evaluate_all(self, n_episode: int) -> dict[int, float]:
-        eval_futures = [c.evaluate.remote(n_episode=n_episode) for c in self.clients]
+        return self._evaluate_selected(range(len(self.clients)), n_episode)
+
+    def _evaluate_selected(
+        self,
+        selected_indices: list[int] | range,
+        n_episode: int,
+    ) -> dict[int, float]:
+        eval_futures = [
+            self.clients[i].evaluate.remote(n_episode=n_episode) for i in selected_indices
+        ]
         evals = self._ray.get(eval_futures)
         return {
-            client_id: float(result["mean_return"])
-            for client_id, result in zip(self.client_ids, evals, strict=True)
+            self.client_ids[i]: float(result["mean_return"])
+            for i, result in zip(selected_indices, evals, strict=True)
         }
 
     def _print_summary(self, summary: dict[str, Any]) -> None:
@@ -171,4 +229,12 @@ class FederatedCoordinator:
             ) + "}"
         else:
             line += f"train_mean_return={summary['train_mean_return']:.2f}"
+        if summary.get("eval_pre") is not None:
+            drops = {
+                cid: summary["eval_post"][cid] - summary["eval_pre"][cid]
+                for cid in summary["eval_pre"]
+            }
+            line += " sync_drop=" + "{" + ", ".join(
+                f"{cid}:{v:+.1f}" for cid, v in drops.items()
+            ) + "}"
         print(line)

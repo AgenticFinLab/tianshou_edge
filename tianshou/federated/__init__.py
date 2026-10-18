@@ -30,6 +30,7 @@ Example (see ``examples/federated/run_dqn_smoke.py``)::
 from tianshou.federated.adapter import (
     FederatedAlgorithmAdapter,
     OffPolicyFederatedAdapter,
+    OnPolicyFederatedAdapter,
     SACFederatedAdapter,
 )
 from tianshou.federated.weight_utils import (
@@ -45,6 +46,7 @@ from tianshou.federated.weight_utils import (
 __all__ = [
     "FederatedAlgorithmAdapter",
     "OffPolicyFederatedAdapter",
+    "OnPolicyFederatedAdapter",
     "SACFederatedAdapter",
     "ClientUpdate",
     "FedProxGradientHook",

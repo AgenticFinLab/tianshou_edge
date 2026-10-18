@@ -11,6 +11,7 @@ that per-client resources can be chosen at construction time via
 """
 from __future__ import annotations
 
+import pickle
 import random
 from collections.abc import Callable
 from typing import Any
@@ -159,20 +160,18 @@ class TianshouFedClientActor:
             "returns": returns,
         }
 
-    def local_train_round(
-        self,
-        global_weights: dict[str, torch.Tensor],
-        budget: LocalBudget,
-    ) -> ClientUpdate:
-        """Run one federated round: sync global weights, train locally, report.
-
-        :param global_weights: aggregated weights broadcast by the server.
-        :param budget: how much local work to perform this round.
-        :return: the client's updated shareable weights and round statistics.
-        """
+    def sync_weights(self, global_weights: dict[str, torch.Tensor]) -> None:
+        """Load aggregated weights into the local algorithm (no training)."""
         self.adapter.load_shared_state(global_weights)
+
+    def local_train(self, budget: LocalBudget) -> ClientUpdate:
+        """Train locally for one round and report; weights must be synced first.
+
+        Split from :meth:`sync_weights` so the coordinator can evaluate the
+        client right after the sync (pre/post-aggregation diagnostics).
+        """
         if self.prox_hook is not None:
-            # Snapshot the just-loaded global weights as the FedProx reference.
+            # Snapshot the current (just-synced) weights as the FedProx reference.
             self.prox_hook.attach_and_snapshot()
         try:
             stats = self.adapter.local_train(self.collector, self.buffer, budget)
@@ -185,3 +184,61 @@ class TianshouFedClientActor:
             num_steps=stats.num_steps,
             mean_return=stats.mean_return,
         )
+
+    def local_train_round(
+        self,
+        global_weights: dict[str, torch.Tensor],
+        budget: LocalBudget,
+    ) -> ClientUpdate:
+        """Run one federated round: sync global weights, train locally, report.
+
+        Convenience wrapper around :meth:`sync_weights` + :meth:`local_train`.
+
+        :param global_weights: aggregated weights broadcast by the server.
+        :param budget: how much local work to perform this round.
+        :return: the client's updated shareable weights and round statistics.
+        """
+        self.sync_weights(global_weights)
+        return self.local_train(budget)
+
+    def get_full_state(self) -> dict:
+        """Return this client's full training state for checkpointing.
+
+        Includes shareable weights, optimizer states (momentum), the replay
+        buffer, and the random streams. The returned dict is picklable.
+        """
+        return {
+            "client_id": self.client_id,
+            "weights": self.adapter.get_shared_state(),
+            # nn.Module.state_dict bypasses the "_optimizers" key, so the
+            # full Algorithm.state_dict is used here — it additionally
+            # carries the optimizer states.
+            "algorithm_state": self.algorithm.state_dict(),
+            "buffer": pickle.dumps(self.buffer),
+            "rng": {
+                "random": random.getstate(),
+                "numpy": np.random.get_state(),
+                "torch": torch.get_rng_state(),
+            },
+        }
+
+    def load_full_state(self, state: dict, mode: str = "full") -> None:
+        """Restore a checkpointed state produced by :meth:`get_full_state`.
+
+        :param state: the pickled state dict.
+        :param mode: ``"full"`` restores weights, optimizer states, replay
+            buffer, and random streams (exact continuation of the client);
+            ``"model_only"`` restores the shareable weights only (fresh
+            buffer/optimizers/RNG — the training continues from the model).
+        """
+        if mode not in ("full", "model_only"):
+            raise ValueError(f"unknown mode {mode!r}, expected 'full' or 'model_only'")
+        self.adapter.load_shared_state(state["weights"])
+        if mode == "full":
+            self.algorithm.load_state_dict(state["algorithm_state"])
+            new_buffer = pickle.loads(state["buffer"])
+            self.buffer = new_buffer
+            self.collector.buffer = new_buffer
+            random.setstate(state["rng"]["random"])
+            np.random.set_state(state["rng"]["numpy"])
+            torch.set_rng_state(state["rng"]["torch"])
