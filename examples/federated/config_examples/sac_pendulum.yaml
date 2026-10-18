@@ -1,0 +1,32 @@
+# Federated SAC on gravity-heterogeneous Pendulum (calibrated config).
+algorithm: sac
+env: pendulum
+seeds: [42]
+device: cpu
+clients_count: 3
+envs_per_client: 4
+buffer_size: 100000
+warmup_steps: 10000
+aggregation: fedavg
+agg_scope: actor_only
+fedprox_mu: 0.0
+heterogeneity:
+  gravity: [8.0, 10.0, 12.0]
+algorithm_config:
+  hidden_sizes: [256, 256]
+  lr: 0.001
+  tau: 0.005
+  alpha: 0.2
+budget:
+  rounds: 15
+  collect_per_update: 1
+  updates_per_round: 4000
+  batch_size: 256
+evaluation:
+  every_rounds: 1
+  episodes: 20
+ray:
+  num_cpus: 1
+  num_gpus: 0
+output:
+  csv_path: results/sac_pendulum_fed.csv
