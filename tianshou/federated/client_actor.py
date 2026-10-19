@@ -11,6 +11,7 @@ that per-client resources can be chosen at construction time via
 """
 from __future__ import annotations
 
+import os
 import pickle
 import random
 from collections.abc import Callable
@@ -137,6 +138,21 @@ class TianshouFedClientActor:
     def get_client_id(self) -> int:
         """Return this client's identifier."""
         return self.client_id
+
+    def get_device_info(self) -> dict[str, Any]:
+        """Return the device placement facts of this actor.
+
+        Used to verify that Ray actually assigned the requested GPU (and the
+        right one) instead of trusting the ``num_gpus`` resource declaration.
+        """
+        info: dict[str, Any] = {
+            "device": str(self.device),
+            "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        }
+        if self.device.type == "cuda":
+            info["cuda_device_index"] = torch.cuda.current_device()
+            info["gpu_name"] = torch.cuda.get_device_name(self.device)
+        return info
 
     def get_initial_weights(self) -> dict[str, torch.Tensor]:
         """Return this client's shareable weights before any training."""

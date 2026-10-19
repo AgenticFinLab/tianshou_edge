@@ -91,7 +91,7 @@ def build_clients(cfg: FederatedConfig, seed: int) -> list:
             actor_cls.remote(
                 client_id=i,
                 env_fn=env_fn,
-                algo_builder=get_algo_builder(cfg.algorithm, cfg.algorithm_config),
+                algo_builder=get_algo_builder(cfg.algorithm, cfg.env, cfg.algorithm_config),
                 adapter_factory=adapter_factory(cfg.algorithm, cfg.agg_scope),
                 num_train_envs=cfg.envs_per_client,
                 buffer_size=cfg.buffer_size,
@@ -146,6 +146,11 @@ def main() -> None:
         for seed in cfg.seeds:
             print(f"\n===== seed {seed} =====")
             clients = build_clients(cfg, seed)
+            # Verify device placement per actor instead of trusting the
+            # num_gpus resource declaration.
+            device_info = ray.get([c.get_device_info.remote() for c in clients])
+            for i, info in enumerate(device_info):
+                print(f"  actor{i}: {info}")
             coordinator = FederatedCoordinator(clients)
 
             def on_round(summary: dict, seed: int = seed) -> None:

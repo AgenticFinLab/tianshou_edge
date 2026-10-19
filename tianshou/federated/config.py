@@ -131,7 +131,7 @@ class FederatedConfig:
 
 _VALID = {
     "algorithm": ("dqn", "sac", "ppo"),
-    "env": ("cartpole", "pendulum"),
+    "env": ("cartpole", "pendulum", "halfcheetah", "hopper"),
     "aggregation": ("fedavg", "local_only"),
     "agg_scope": ("all", "actor_only"),
 }
