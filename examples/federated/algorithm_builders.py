@@ -15,16 +15,20 @@ from examples.federated.sac_builder import build_pendulum_sac, make_pendulum_env
 from tianshou.algorithm.modelfree.dqn import DiscreteQLearningPolicy, DQN
 from tianshou.algorithm.modelfree.ppo import PPO
 from tianshou.algorithm.modelfree.reinforce import ProbabilisticActorPolicy
+from tianshou.algorithm.modelfree.sac import SAC, SACPolicy
 from tianshou.algorithm.optim import AdamOptimizerFactory
 from tianshou.utils.net.common import Net
+from tianshou.utils.net.continuous import ContinuousActorProbabilistic, ContinuousCritic
 from tianshou.utils.net.discrete import DiscreteActor, DiscreteCritic
 from tianshou.utils.space_info import SpaceInfo
 
 __all__ = [
     "make_cartpole_env_fn",
     "make_pendulum_env_fn",
+    "make_mujoco_env_fn",
     "build_dqn_cartpole",
     "build_sac_pendulum",
+    "build_sac_mujoco",
     "build_ppo_cartpole",
     "get_env_fn",
     "get_algo_builder",
@@ -38,6 +42,20 @@ def make_cartpole_env_fn(gravity: float):
         env = gym.make("CartPole-v1")
         env.gravity = gravity
         return env
+
+    return _make
+
+
+def make_mujoco_env_fn(task: str):
+    """Create a factory for a plain MuJoCo env (identical task per client).
+
+    Used by the platform benchmarks: clients run identical tasks, so no
+    physics modifications are applied here. Heterogeneous MuJoCo clients
+    (mass/friction perturbations) are future work.
+    """
+
+    def _make() -> Env:
+        return gym.make(task)
 
     return _make
 
@@ -90,6 +108,56 @@ def build_sac_pendulum(
                               gravity=gravity)
 
 
+def build_sac_mujoco(
+    task: str = "HalfCheetah-v5",
+    lr: float = 1e-3,
+    hidden_sizes: list[int] | None = None,
+    tau: float = 0.005,
+    alpha: float = 0.2,
+):
+    """Build a SAC for a MuJoCo task (CPU); the caller moves it to a device.
+
+    Follows the tianshou MuJoCo SAC benchmark config (examples/mujoco/
+    mujoco_sac.py): independent twin critics, tanh-squashed Gaussian actor.
+    """
+    if hidden_sizes is None:
+        hidden_sizes = [256, 256]
+    env = gym.make(task)
+    space_info = SpaceInfo.from_env(env)
+    obs_shape = space_info.observation_info.obs_shape
+    action_shape = space_info.action_info.action_shape
+
+    def make_critic() -> ContinuousCritic:
+        return ContinuousCritic(
+            preprocess_net=Net(
+                state_shape=obs_shape,
+                action_shape=action_shape,
+                hidden_sizes=hidden_sizes,
+                concat=True,
+            ),
+            hidden_sizes=hidden_sizes,
+        )
+
+    actor = ContinuousActorProbabilistic(
+        preprocess_net=Net(state_shape=obs_shape, hidden_sizes=hidden_sizes),
+        action_shape=action_shape,
+        hidden_sizes=hidden_sizes,
+    )
+    policy = SACPolicy(actor=actor, action_space=env.action_space, deterministic_eval=True)
+    env.close()
+    return SAC(
+        policy=policy,
+        policy_optim=AdamOptimizerFactory(lr=lr),
+        critic=make_critic(),
+        critic_optim=AdamOptimizerFactory(lr=lr),
+        critic2=make_critic(),
+        critic2_optim=AdamOptimizerFactory(lr=lr),
+        tau=tau,
+        gamma=0.99,
+        alpha=alpha,
+    )
+
+
 def build_ppo_cartpole(
     lr: float = 1e-3,
     hidden_sizes: list[int] | None = None,
@@ -140,6 +208,9 @@ def build_ppo_cartpole(
     )
 
 
+_MUJOCO_TASKS = {"halfcheetah": "HalfCheetah-v5", "hopper": "Hopper-v5"}
+
+
 def get_env_fn(env: str, heterogeneity: dict) -> callable:
     """Return an env factory for one client from the config heterogeneity."""
     if env == "cartpole":
@@ -158,10 +229,14 @@ def get_env_fn(env: str, heterogeneity: dict) -> callable:
 
             return _make_with_physics
         return fn
+    if env in _MUJOCO_TASKS:
+        # Benchmark clients run identical tasks; heterogeneity for MuJoCo
+        # (mass/friction perturbations) is future work.
+        return make_mujoco_env_fn(_MUJOCO_TASKS[env])
     raise ValueError(f"unknown env {env!r}")
 
 
-def get_algo_builder(algorithm: str, algo_cfg) -> callable:
+def get_algo_builder(algorithm: str, env: str, algo_cfg) -> callable:
     """Return an algorithm builder closure from the config."""
     if algorithm == "dqn":
         return lambda: build_dqn_cartpole(
@@ -173,6 +248,15 @@ def get_algo_builder(algorithm: str, algo_cfg) -> callable:
             eps_training=algo_cfg.eps_training,
         )
     if algorithm == "sac":
+        if env in _MUJOCO_TASKS:
+            task = _MUJOCO_TASKS[env]
+            return lambda: build_sac_mujoco(
+                task=task,
+                lr=algo_cfg.lr,
+                hidden_sizes=algo_cfg.hidden_sizes,
+                tau=algo_cfg.tau,
+                alpha=algo_cfg.alpha,
+            )
         return lambda: build_sac_pendulum(
             lr=algo_cfg.lr,
             hidden_sizes=algo_cfg.hidden_sizes,

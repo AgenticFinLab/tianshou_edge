@@ -109,12 +109,19 @@ output:
   checkpoint_dir: null            # set a path to checkpoint every round
 ```
 
-## Not yet supported
+## Implementation status
 
-* MARL (per-agent aggregation) — the adapter interface is designed to
-  accommodate it, but no implementation exists yet.
-* Secure aggregation / differential privacy.
-* Multi-node Ray clusters (untested; single-node is the supported mode).
+Implemented and validated: DQN / SAC / PPO federated training via one config
+file, FedAvg and actor-scope FedProx, partial participation, pre/post
+aggregation diagnostics, checkpoint/resume (full state or model-only),
+streaming per-client results (CSV + history JSONL), per-actor GPU placement
+reporting. Validated on a single-node 8xA40 container: see
+`tianshou/federated/README.md` for the validation summary and
+`results/benchmark_server.md` for the three-mode benchmark.
+
+Not yet implemented: MARL (per-agent aggregation), secure aggregation /
+differential privacy, multi-node Ray clusters (single-node multi-GPU only,
+so far).
 
 ## Where the pieces live
 

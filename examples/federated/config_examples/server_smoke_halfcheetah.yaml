@@ -1,0 +1,41 @@
+# GPU-path smoke for the 8xA40 server: 8 clients, SAC on HalfCheetah-v5,
+# 5 rounds x (1000 env steps + 1000 gradient steps, UTD=1).
+# Clients run identical tasks (platform verification, not heterogeneity).
+# num_gpus=0.25 packs 4 clients per physical card: a single client sits at
+# ~5-7% GPU duty (Python overhead dominates), which is below the cluster's
+# minimum-utilization threshold; 4 per card stays above it.
+algorithm: sac
+env: halfcheetah
+seeds: [42]
+device: cuda
+clients_count: 8
+envs_per_client: 1
+buffer_size: 200000
+warmup_steps: 2000
+aggregation: fedavg
+agg_scope: all
+fedprox_mu: 0.0
+heterogeneity:
+  gravity: 9.8        # unused for MuJoCo clients (identical tasks)
+algorithm_config:
+  hidden_sizes: [256, 256]
+  lr: 0.001
+  tau: 0.005
+  alpha: 0.2
+budget:
+  rounds: 5
+  # LocalBudget semantics: collect_per_update env steps BEFORE EACH of the
+  # updates_per_round updates. With envs_per_client=1, collect=1 x updates=1000
+  # gives exactly 1000 env steps + 1000 gradient steps per round (UTD=1).
+  # Do NOT set collect=1000 here: that means 1000 x 1000 = 1M steps per round.
+  collect_per_update: 1
+  updates_per_round: 1000
+  batch_size: 256
+evaluation:
+  every_rounds: 1
+  episodes: 10
+ray:
+  num_cpus: 8
+  num_gpus: 0.25
+output:
+  csv_path: results/server_smoke_halfcheetah.csv

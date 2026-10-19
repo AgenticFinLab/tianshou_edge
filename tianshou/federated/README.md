@@ -60,13 +60,34 @@ count multiplies the collected steps of each `collect(n_step=...)` call.
 
 ## Supported / not supported
 
-Supported: DQN family, SAC (via `OffPolicyFederatedAdapter` /
-`SACFederatedAdapter`), PPO/A2C (via `OnPolicyFederatedAdapter`), FedAvg,
-FedProx (actor-scope), partial participation (`clients_per_round`),
-pre/post-aggregation evaluation diagnostics (`eval_pre_post`, off by
-default), per-round checkpointing and resume (full state or model-only, see
-`tianshou.federated.persistence`), config-driven runs
-(`tianshou.federated.config`).
+Implemented and validated:
 
-Not yet supported (interface kept extensible): MARL per-agent aggregation,
-secure aggregation / DP. Multi-node Ray setups are untested.
+* DQN family (via `OffPolicyFederatedAdapter`), SAC (via
+  `SACFederatedAdapter`, `agg_scope` all/actor_only), PPO/A2C (via
+  `OnPolicyFederatedAdapter`) — each with end-to-end examples and unit tests.
+* FedAvg (weighted by collected env steps) and actor-scope FedProx (zero
+  intrusion via parameter gradient hooks).
+* Partial participation (`clients_per_round`).
+* Pre/post-aggregation evaluation diagnostics (`eval_pre_post`, off by
+  default).
+* Per-round checkpointing and resume (full state or model-only, see
+  `tianshou.federated.persistence`).
+* Config-driven runs (`tianshou.federated.config`; one YAML/JSON per
+  experiment for all three algorithm families).
+* Per-actor device placement reporting (`get_device_info`): GPU-path
+  verification does not rely on the `num_gpus` resource declaration.
+
+Validated on a single-node 8xA40 container (64 cores): device placement per
+actor, no OOM/NaN, streaming results, checkpoint/resume round-trips, and a
+three-mode benchmark (see `results/benchmark_server.md`). Key measured
+findings: Ray parallelism gives ~4x over serial client training; for the
+[256, 256] / batch-256 workload the per-update cost is CPU-side Python
+overhead, so CPU-parallel beats GPU-parallel (~1.2x) — GPUs are expected to
+win for larger models. Environment trap: OMP_NUM_THREADS=8 is pinned inside
+the benchmark harness; the 64-thread default is ~290x slower per update.
+
+Not yet implemented (interface kept extensible):
+
+* MARL per-agent aggregation.
+* Secure aggregation / differential privacy.
+* Multi-node Ray clusters (single-node multi-GPU only, so far).
