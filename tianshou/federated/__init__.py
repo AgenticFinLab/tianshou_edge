@@ -20,7 +20,7 @@ Ray-dependent modules (:mod:`tianshou.federated.client_actor`,
 :mod:`tianshou.federated.coordinator`) are intentionally not imported here, so
 ``import tianshou.federated`` works without Ray installed.
 
-Example (see ``examples/federated/run_dqn_smoke.py``)::
+Example (see ``examples/federated/quickstart_dqn_cartpole.py``)::
 
     actor_cls = remote_client_actor(num_cpus=1)
     clients = [actor_cls.remote(client_id=i, env_fn=..., algo_builder=..., adapter_factory=...) for i in range(3)]

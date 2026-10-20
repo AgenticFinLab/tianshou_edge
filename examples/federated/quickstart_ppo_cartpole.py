@@ -1,4 +1,4 @@
-"""Single-machine federated PPO smoke test on CartPole with heterogeneous gravity.
+"""Single-machine federated PPO quickstart example on CartPole with heterogeneous gravity.
 
 Validates the on-policy federation path end to end: each client collects
 fresh trajectories, runs local PPO epochs, uploads shareable weights, and the
@@ -6,7 +6,7 @@ coordinator aggregates them with FedAvg.
 
 Run from the repo root (requires the ``ray`` package)::
 
-    python examples/federated/run_ppo_smoke.py --rounds 20 --clients 3
+    python examples/federated/quickstart_ppo_cartpole.py --rounds 20 --clients 3
 """
 from __future__ import annotations
 
@@ -143,7 +143,7 @@ def main() -> None:
         final_mean = (
             list(history[-1]["eval_returns"].values()) if history and history[-1].get("eval_returns") else None
         )
-        print(f"smoke test done: {args.rounds} rounds, "
+        print(f"quickstart example done: {args.rounds} rounds, "
               f"final per-client eval: {final_mean}")
     finally:
         ray.shutdown()

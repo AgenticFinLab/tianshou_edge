@@ -1,8 +1,6 @@
-# Overnight occupation run: federated SAC on HalfCheetah-v5, launched by the
-# watchdog after the benchmark chain finishes. 4 clients packed on one card
-# (num_gpus=0.25 x 4 = 1.0) via CUDA_VISIBLE_DEVICES=0,1 set by the watchdog.
+# Long-duration federated SAC training example: Meta-World reach-v3 with 6 clients.
 algorithm: sac
-env: hopper
+env: metaworld_reach
 seeds: [42]
 device: cuda
 clients_count: 6
@@ -20,7 +18,7 @@ algorithm_config:
   tau: 0.005
   alpha: 0.2
 budget:
-  rounds: 300
+  rounds: 600
   collect_per_update: 1
   updates_per_round: 1000
   batch_size: 256
@@ -31,4 +29,4 @@ ray:
   num_cpus: 8
   num_gpus: 0.25
 output:
-  csv_path: results/overnight_hopper.csv
+  csv_path: results/longrun_metaworld_reach.csv

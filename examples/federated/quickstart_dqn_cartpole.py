@@ -1,4 +1,4 @@
-"""Single-machine federated DQN smoke test on CartPole with heterogeneous dynamics.
+"""Single-machine federated DQN quickstart example on CartPole with heterogeneous dynamics.
 
 Each client runs its own CartPole environment with a different gravity
 constant, trains a DQN locally, and ships weights to a coordinator actor which
@@ -8,7 +8,7 @@ algorithmic is built on top of it.
 
 Run from the repo root (requires the `ray` package)::
 
-    python examples/federated/run_dqn_smoke.py --rounds 50 --clients 3
+    python examples/federated/quickstart_dqn_cartpole.py --rounds 50 --clients 3
 
 Optional FedProx proximal term: ``--mu 0.1``.
 """
@@ -125,7 +125,7 @@ def main() -> None:
             ),
         )
         final_mean = history[-1]["mean_return"] if history else None
-        print(f"smoke test done: {args.rounds} rounds, "
+        print(f"quickstart example done: {args.rounds} rounds, "
               f"final mean_return={final_mean}")
     finally:
         ray.shutdown()

@@ -1,4 +1,4 @@
-# Overnight occupation: federated SAC on Meta-World reach-v3 (6 clients).
+# Long-duration federated SAC training example: Meta-World push-v3 with 6 clients.
 algorithm: sac
 env: metaworld_push
 seeds: [42]
@@ -29,4 +29,4 @@ ray:
   num_cpus: 8
   num_gpus: 0.25
 output:
-  csv_path: results/overnight_metaworld_push.csv
+  csv_path: results/longrun_metaworld_push.csv

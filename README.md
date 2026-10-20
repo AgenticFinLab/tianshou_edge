@@ -83,6 +83,7 @@ Other noteworthy features:
 - Support for customized training processes (see [usage](https://tianshou.readthedocs.io/en/master/01_tutorials/07_cheatsheet.html#customize-training-process))
 - Support n-step returns estimation and prioritized experience replay for all Q-learning based algorithms; GAE, nstep and PER are highly optimized thanks to numba's just-in-time compilation and vectorized numpy operations
 - Support for multi-agent RL (see [usage](https://tianshou.readthedocs.io/en/master/01_tutorials/07_cheatsheet.html#multi-agent-reinforcement-learning))
+- Support for federated reinforcement learning (multi-client FedAvg/FedProx training over Ray, config-driven experiments, and a single-port cross-machine bridge for isolated networks)
 - Support for logging based on both [TensorBoard](https://www.tensorflow.org/tensorboard) and [W&B](https://wandb.ai/)
 - Support for multi-GPU training (see [usage](https://tianshou.readthedocs.io/en/master/01_tutorials/07_cheatsheet.html#multi-gpu))
 - Comprehensive documentation, PEP8 code-style checking, type checking and thorough [tests](https://github.com/thu-ml/tianshou/actions)
@@ -463,6 +464,17 @@ $ tensorboard --logdir log/dqn
 
 Please read the [documentation](https://tianshou.readthedocs.io) for advanced usage.
 
+## Federated Reinforcement Learning
+
+This repository includes a federated reinforcement learning layer
+(`tianshou.federated`) built on Ray: driver-driven rounds over multiple
+clients with FedAvg and actor-scope FedProx, adapters for DQN / SAC / PPO,
+config-driven experiments, checkpoint/resume, and a single-port
+cross-machine bridge for isolated networks. See
+[examples/federated/README.md](examples/federated/README.md) for the
+tutorial and [tianshou/federated/README.md](tianshou/federated/README.md)
+for the API contract and validation results.
+
 ## Contributing
 
 Tianshou is still under development.
@@ -494,3 +506,5 @@ a non-profit organization committed to providing long-term support and developme
 Tianshou was previously a reinforcement learning platform based on TensorFlow. You can check out the branch [`priv`](https://github.com/thu-ml/tianshou/tree/priv) for more detail. Many thanks to [Haosheng Zou](https://github.com/HaoshengZou)'s pioneering work for Tianshou before version 0.1.1.
 
 We would like to thank [TSAIL](http://ml.cs.tsinghua.edu.cn/) and [Institute for Artificial Intelligence, Tsinghua University](http://ml.cs.tsinghua.edu.cn/thuai/) for providing such an excellent AI research platform.
+
+Federated reinforcement learning support (`tianshou.federated`) is contributed by [AgenticFinLab, HKUST(GZ)](https://github.com/AgenticFinLab).

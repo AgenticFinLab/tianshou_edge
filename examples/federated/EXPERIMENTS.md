@@ -104,7 +104,7 @@ caveats (rescaling, co-location) are stated inline.
 * Data: `results/update_cost_sweep.md`,
   `results/benchmark_server_gpu_hungry.md`.
 
-## E7. Meta-World overnight federated training (reach-v3, push-v3)
+## E7. Long-duration Meta-World federated training (reach-v3, push-v3)
 
 * Protocol: 6 clients per federation, SAC [256, 256] batch 256, UTD=1,
   600 rounds per cycle, eval every 25 rounds; cycles auto-restart with CSV
@@ -120,7 +120,7 @@ caveats (rescaling, co-location) are stated inline.
   consistent per-cycle endpoints are replication evidence, not final
   experiment data.
 * Data: `results/metaworld_reconstructed/*` (local reconstructions),
-  server `results/overnight_metaworld_*.csv` and `*_history.jsonl`.
+  server `results/longrun_metaworld_*.csv` and `*_history.jsonl`.
 
 ## Cross-cutting findings
 

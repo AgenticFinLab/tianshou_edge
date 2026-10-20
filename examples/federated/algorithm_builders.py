@@ -2,7 +2,7 @@
 
 Single source of truth for the DQN (CartPole), SAC (Pendulum), and PPO
 (CartPole) constructions used by the unified config-driven entry
-(``run_federated.py``) and the standalone smoke scripts.
+(``run_federated.py``) and the quickstart scripts.
 """
 from __future__ import annotations
 

@@ -204,6 +204,5 @@ Results are written by the driver and land on the head node's local
 * `tianshou/federated/` — the platform: coordinator, client actor, adapters,
   weight utilities, persistence, config schema (API contract in
   `tianshou/federated/README.md`).
-* `examples/federated/` — unified entry, config examples, standalone smoke
-  scripts, algorithm builders.
+* `examples/federated/` — unified entry, config examples, quickstart scripts, algorithm builders.
 * `test/federated/` — unit tests (`pytest test/federated`).

@@ -1,8 +1,8 @@
-# Overnight occupation run: federated SAC on HalfCheetah-v5, launched by the
+# Long-duration federated SAC training example: Hopper-v5 with 6 clients.
 # watchdog after the benchmark chain finishes. 4 clients packed on one card
 # (num_gpus=0.25 x 4 = 1.0) via CUDA_VISIBLE_DEVICES=0,1 set by the watchdog.
 algorithm: sac
-env: halfcheetah
+env: hopper
 seeds: [42]
 device: cuda
 clients_count: 6
@@ -31,4 +31,4 @@ ray:
   num_cpus: 8
   num_gpus: 0.25
 output:
-  csv_path: results/overnight_halfcheetah.csv
+  csv_path: results/longrun_hopper.csv
