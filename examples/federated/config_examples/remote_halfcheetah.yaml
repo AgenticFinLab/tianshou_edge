@@ -25,6 +25,9 @@ budget:
 evaluation:
   every_rounds: 5
   episodes: 5
+# NOTE: the remote container's Ray detects only 4 CPUs (cgroup limit).
+# 4 clients x num_cpus=0.5 = 2.0 leaves headroom; larger values make
+# actor construction stall silently waiting for CPU slots.
 ray:
   num_cpus: 0.5
   num_gpus: 0.25

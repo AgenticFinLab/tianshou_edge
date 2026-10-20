@@ -123,7 +123,41 @@ Not yet implemented: MARL (per-agent aggregation), secure aggregation /
 differential privacy, multi-node Ray clusters (single-node multi-GPU only,
 so far).
 
-## Multi-node deployment (Ray cluster)
+## Multi-node deployment
+
+Two supported modes:
+
+### A. Single-port bridge (recommended for isolated networks)
+
+When nodes cannot reach each other on Ray's ports (isolated containers, NAT),
+use the application-level bridge: every node keeps its own LOCAL Ray cluster
+(fully stable) and nodes exchange weights through one authenticated TCP port.
+
+Architecture:
+
+* Remote node: run `python examples/federated/run_remote_server.py
+  --config <remote config> --port 18888`. This builds the remote clients and
+  serves them through `FederatedWorkerServer` (127.0.0.1:18888).
+* Head node: forward exactly one port with an SSH tunnel
+  (`ssh -N -L 0.0.0.0:18888:127.0.0.1:18888 <remote-host>`), then wrap each
+  remote client in `tianshou.federated.remote_bridge.RemoteClientGroup` and
+  pass it to the coordinator alongside local actors — the coordinator runs
+  unchanged (the group mimics a Ray actor handle).
+* Tensors are encoded to bytes explicitly (`_encode`/`_decode` in
+  `remote_bridge.py`): torch's default pickler shares storages through
+  unix-socket file descriptors, which cannot cross containers.
+
+Verified across two isolated containers (acceptance: 100-round mixed
+federated sync, 1 local A40 + 4 remote A800-MIG, 3.74s/round; results in
+`results/multinode_acceptance.md`, kept local).
+
+Remote config note: some containers expose only a few CPUs to Ray
+(`ray.cluster_resources()` reports e.g. 4.0). Size `num_cpus` per actor so
+that `clients_count x num_cpus` fits below the detected CPU count, otherwise
+actor construction stalls silently (see
+`config_examples/remote_halfcheetah.yaml`, `num_cpus: 0.5`).
+
+### B. Native Ray cluster (when ports are reachable)
 
 The federated layer is Ray-native: a multi-node run only needs a Ray cluster
 spanning the nodes and the repository available at the same path on every
