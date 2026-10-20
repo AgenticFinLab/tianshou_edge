@@ -228,7 +228,8 @@ class FederatedCoordinator:
                 f"{cid}:{v:.0f}" for cid, v in summary["eval_returns"].items()
             ) + "}"
         else:
-            line += f"train_mean_return={summary['train_mean_return']:.2f}"
+            tmr = summary["train_mean_return"]
+            line += f"train_mean_return={tmr:.2f}" if tmr is not None else "train_mean_return=None"
         if summary.get("eval_pre") is not None:
             drops = {
                 cid: summary["eval_post"][cid] - summary["eval_pre"][cid]

@@ -24,13 +24,61 @@ Security note: the pickle-based stream is authenticated with a shared
 """
 from __future__ import annotations
 
+import dataclasses
+import importlib
 import threading
 from multiprocessing.connection import Client, Listener
 from typing import Any
 
+import numpy as np
+import torch
+
 __all__ = ["FederatedWorkerServer", "RemoteClientGroup"]
 
 AUTHKEY = b"tianshou-federated-bridge"
+
+
+def _encode(obj: Any) -> Any:
+    """Convert torch tensors and numpy arrays to fully serializable bytes.
+
+    PyTorch's default pickler shares storages through unix-socket file
+    descriptors (resource_sharer), which only works on one machine; the
+    bridge must carry payloads across containers, so tensors are converted
+    to plain (bytes, dtype, shape) tuples instead.
+    """
+    if isinstance(obj, torch.Tensor):
+        t = obj.detach().cpu()
+        return {"__torch_tensor__": (t.numpy().tobytes(), str(t.numpy().dtype), tuple(t.shape))}
+    if isinstance(obj, np.ndarray):
+        return {"__numpy__": (obj.tobytes(), str(obj.dtype), tuple(obj.shape))}
+    if dataclasses.is_dataclass(obj):
+        return {
+            "__dataclass__": f"{type(obj).__module__}.{type(obj).__qualname__}",
+            "fields": _encode(dataclasses.asdict(obj)),
+        }
+    if isinstance(obj, dict):
+        return {key: _encode(value) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_encode(value) for value in obj]
+    return obj
+
+
+def _decode(obj: Any) -> Any:
+    if isinstance(obj, dict) and "__torch_tensor__" in obj:
+        data, dtype, shape = obj["__torch_tensor__"]
+        return torch.from_numpy(np.frombuffer(data, dtype=np.dtype(dtype)).reshape(shape))
+    if isinstance(obj, dict) and "__numpy__" in obj:
+        data, dtype, shape = obj["__numpy__"]
+        return np.frombuffer(data, dtype=np.dtype(dtype)).reshape(shape)
+    if isinstance(obj, dict) and "__dataclass__" in obj:
+        module, name = obj["__dataclass__"].rsplit(".", 1)
+        cls = getattr(importlib.import_module(module), name)
+        return cls(**_decode(obj["fields"]))
+    if isinstance(obj, dict):
+        return {key: _decode(value) for key, value in obj.items()}
+    if isinstance(obj, list):
+        return [_decode(value) for value in obj]
+    return obj
 
 
 def _decode_remote_args(args: tuple, kwargs: dict) -> tuple[tuple, dict]:
@@ -90,14 +138,14 @@ class FederatedWorkerServer:
     def _handle(self, conn) -> None:
         try:
             while True:
-                msg = conn.recv()
+                msg = _decode(conn.recv())
                 cmd = msg["cmd"]
                 args, kwargs = _decode_remote_args(msg.get("args", ()), msg.get("kwargs", {}))
                 try:
                     result = self._dispatch(cmd, args, kwargs)
-                    conn.send({"ok": True, "result": result})
+                    conn.send(_encode({"ok": True, "result": result}))
                 except Exception as e:  # noqa: BLE001 - report errors to the caller
-                    conn.send({"ok": False, "error": f"{type(e).__name__}: {e}"})
+                    conn.send(_encode({"ok": False, "error": f"{type(e).__name__}: {e}"}))
         except (EOFError, ConnectionResetError, OSError):
             pass  # head disconnected
         finally:
@@ -163,9 +211,9 @@ class RemoteClientGroup:
         with self._lock:
             conn = Client((self.host, self.port), authkey=AUTHKEY)
             try:
-                conn.send({"cmd": cmd, "args": (self.client_id, *args),
-                           "kwargs": kwargs or {}})
-                reply = conn.recv()
+                conn.send(_encode({"cmd": cmd, "args": (self.client_id, *args),
+                                   "kwargs": kwargs or {}}))
+                reply = _decode(conn.recv())
             finally:
                 conn.close()
         if not reply.get("ok"):

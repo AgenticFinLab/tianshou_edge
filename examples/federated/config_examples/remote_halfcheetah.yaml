@@ -26,7 +26,7 @@ evaluation:
   every_rounds: 5
   episodes: 5
 ray:
-  num_cpus: 2
+  num_cpus: 0.5
   num_gpus: 0.25
 output:
   csv_path: results/remote_halfcheetah.csv
