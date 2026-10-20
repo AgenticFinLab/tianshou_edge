@@ -78,13 +78,19 @@ Implemented and validated:
   verification does not rely on the `num_gpus` resource declaration.
 
 Validated on a single-node 8xA40 container (64 cores): device placement per
-actor, no OOM/NaN, streaming results, checkpoint/resume round-trips, and a
-three-mode benchmark (see `results/benchmark_server.md`). Key measured
-findings: Ray parallelism gives ~4x over serial client training; for the
-[256, 256] / batch-256 workload the per-update cost is CPU-side Python
-overhead, so CPU-parallel beats GPU-parallel (~1.2x) — GPUs are expected to
-win for larger models. Environment trap: OMP_NUM_THREADS=8 is pinned inside
-the benchmark harness; the 64-thread default is ~290x slower per update.
+actor, no OOM/NaN, streaming results, checkpoint/resume round-trips, and
+three-mode benchmarks (see `results/benchmark_server.md` for the small-model
+run and `results/benchmark_server_gpu_hungry.md` for the GPU crossover run).
+Key measured findings:
+
+* Ray parallelism gives ~4x over serial client training in every regime.
+* The GPU/CPU crossover is measured end-to-end: at [256, 256] / batch 256
+  the per-update cost is CPU-side Python overhead and CPU-parallel beats
+  GPU-parallel (~1.2x); at [1024, 1024] / batch 1024 the GPU wins: 2.4x
+  over CPU-parallel and 9.1x over serial, with 100% card utilization
+  (crossover grid in `results/update_cost_sweep.md`).
+* Environment trap: OMP_NUM_THREADS=8 is pinned inside the benchmark
+  harness; the 64-thread default is ~290x slower per update.
 
 Not yet implemented (interface kept extensible):
 

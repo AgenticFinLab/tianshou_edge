@@ -58,6 +58,8 @@ def parse_args() -> argparse.Namespace:
                              "(collect=1000 would mean 1M steps per round!)")
     parser.add_argument("--updates", type=int, default=1000)
     parser.add_argument("--batch", type=int, default=256)
+    parser.add_argument("--hidden", nargs="+", type=int, default=[256, 256],
+                        help="actor/critic hidden sizes (GPU-hungry runs pass larger nets)")
     parser.add_argument("--mode", type=str, required=True,
                         choices=["serial", "ray-cpu", "ray-gpu"])
     parser.add_argument("--repeats", type=int, default=1,
@@ -125,7 +127,7 @@ def build_local_clients(args: argparse.Namespace, device: str, seed: int) -> lis
         TianshouFedClientActor(
             client_id=i,
             env_fn=make_mujoco_env_fn(task),
-            algo_builder=lambda: build_sac_mujoco(task=task),
+            algo_builder=lambda: build_sac_mujoco(task=task, hidden_sizes=args.hidden),
             adapter_factory=SACFederatedAdapter,
             num_train_envs=1,
             buffer_size=200000,
@@ -175,7 +177,7 @@ def run_ray(args: argparse.Namespace, device: str) -> dict:
             actor_cls.remote(
                 client_id=i,
                 env_fn=make_mujoco_env_fn(task),
-                algo_builder=lambda: build_sac_mujoco(task=task),
+                algo_builder=lambda: build_sac_mujoco(task=task, hidden_sizes=args.hidden),
                 adapter_factory=SACFederatedAdapter,
                 num_train_envs=1,
                 buffer_size=200000,

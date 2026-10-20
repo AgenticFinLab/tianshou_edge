@@ -26,9 +26,11 @@ __all__ = [
     "make_cartpole_env_fn",
     "make_pendulum_env_fn",
     "make_mujoco_env_fn",
+    "make_metaworld_env_fn",
     "build_dqn_cartpole",
     "build_sac_pendulum",
     "build_sac_mujoco",
+    "build_sac_metaworld",
     "build_ppo_cartpole",
     "get_env_fn",
     "get_algo_builder",
@@ -106,6 +108,69 @@ def build_sac_pendulum(
     """Build a Pendulum SAC (delegates to :mod:`examples.federated.sac_builder`)."""
     return build_pendulum_sac(lr=lr, hidden_sizes=hidden_sizes, tau=tau, alpha=alpha,
                               gravity=gravity)
+
+
+def make_metaworld_env_fn(task: str):
+    """Create a factory for a Meta-World task env (fresh goals per reset)."""
+
+    def _make() -> Env:
+        import metaworld
+
+        mt1 = metaworld.MT1(task)
+        env = mt1.train_classes[task]()
+        # metaworld internal: train envs must be unfrozen to sample fresh
+        # goals, and set_task must be called before the first step.
+        env._freeze_rand_vec = False
+        env.set_task(mt1.train_tasks[0])
+        return env
+
+    return _make
+
+
+def build_sac_metaworld(
+    task: str = "reach-v3",
+    lr: float = 1e-3,
+    hidden_sizes: list[int] | None = None,
+    tau: float = 0.005,
+    alpha: float = 0.2,
+):
+    """Build a SAC for a Meta-World task (CPU); the caller moves it to a device."""
+    if hidden_sizes is None:
+        hidden_sizes = [256, 256]
+    env = make_metaworld_env_fn(task)()
+    space_info = SpaceInfo.from_env(env)
+    obs_shape = space_info.observation_info.obs_shape
+    action_shape = space_info.action_info.action_shape
+
+    def make_critic() -> ContinuousCritic:
+        return ContinuousCritic(
+            preprocess_net=Net(
+                state_shape=obs_shape,
+                action_shape=action_shape,
+                hidden_sizes=hidden_sizes,
+                concat=True,
+            ),
+            hidden_sizes=hidden_sizes,
+        )
+
+    actor = ContinuousActorProbabilistic(
+        preprocess_net=Net(state_shape=obs_shape, hidden_sizes=hidden_sizes),
+        action_shape=action_shape,
+        hidden_sizes=hidden_sizes,
+    )
+    policy = SACPolicy(actor=actor, action_space=env.action_space, deterministic_eval=True)
+    env.close()
+    return SAC(
+        policy=policy,
+        policy_optim=AdamOptimizerFactory(lr=lr),
+        critic=make_critic(),
+        critic_optim=AdamOptimizerFactory(lr=lr),
+        critic2=make_critic(),
+        critic2_optim=AdamOptimizerFactory(lr=lr),
+        tau=tau,
+        gamma=0.99,
+        alpha=alpha,
+    )
 
 
 def build_sac_mujoco(
@@ -209,6 +274,7 @@ def build_ppo_cartpole(
 
 
 _MUJOCO_TASKS = {"halfcheetah": "HalfCheetah-v5", "hopper": "Hopper-v5"}
+_METAWORLD_TASKS = {"metaworld_reach": "reach-v3", "metaworld_push": "push-v3"}
 
 
 def get_env_fn(env: str, heterogeneity: dict) -> callable:
@@ -233,6 +299,8 @@ def get_env_fn(env: str, heterogeneity: dict) -> callable:
         # Benchmark clients run identical tasks; heterogeneity for MuJoCo
         # (mass/friction perturbations) is future work.
         return make_mujoco_env_fn(_MUJOCO_TASKS[env])
+    if env in _METAWORLD_TASKS:
+        return make_metaworld_env_fn(_METAWORLD_TASKS[env])
     raise ValueError(f"unknown env {env!r}")
 
 
@@ -251,6 +319,15 @@ def get_algo_builder(algorithm: str, env: str, algo_cfg) -> callable:
         if env in _MUJOCO_TASKS:
             task = _MUJOCO_TASKS[env]
             return lambda: build_sac_mujoco(
+                task=task,
+                lr=algo_cfg.lr,
+                hidden_sizes=algo_cfg.hidden_sizes,
+                tau=algo_cfg.tau,
+                alpha=algo_cfg.alpha,
+            )
+        if env in _METAWORLD_TASKS:
+            task = _METAWORLD_TASKS[env]
+            return lambda: build_sac_metaworld(
                 task=task,
                 lr=algo_cfg.lr,
                 hidden_sizes=algo_cfg.hidden_sizes,
