@@ -98,6 +98,7 @@ class EvaluationConfig:
 class RayConfig:
     num_cpus: float = 1
     num_gpus: float = 0
+    address: str | None = None  # join an existing Ray cluster (multi-node)
 
 
 @dataclass

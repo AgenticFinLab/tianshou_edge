@@ -144,6 +144,7 @@ class TianshouFedClientActor:
 
         Used to verify that Ray actually assigned the requested GPU (and the
         right one) instead of trusting the ``num_gpus`` resource declaration.
+        In multi-node clusters, also reports which node the actor landed on.
         """
         info: dict[str, Any] = {
             "device": str(self.device),
@@ -152,6 +153,14 @@ class TianshouFedClientActor:
         if self.device.type == "cuda":
             info["cuda_device_index"] = torch.cuda.current_device()
             info["gpu_name"] = torch.cuda.get_device_name(self.device)
+        try:
+            import ray  # available inside the actor process
+
+            ctx = ray.get_runtime_context()
+            info["node_id"] = ctx.get_node_id()
+            info["node_ip"] = ctx.get_node_ip()
+        except Exception:  # noqa: BLE001 - best-effort, single-node fallback
+            pass
         return info
 
     def get_initial_weights(self) -> dict[str, torch.Tensor]:

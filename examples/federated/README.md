@@ -123,6 +123,48 @@ Not yet implemented: MARL (per-agent aggregation), secure aggregation /
 differential privacy, multi-node Ray clusters (single-node multi-GPU only,
 so far).
 
+## Multi-node deployment (Ray cluster)
+
+The federated layer is Ray-native: a multi-node run only needs a Ray cluster
+spanning the nodes and the repository available at the same path on every
+node. No code changes are required — the unified entry joins the cluster via
+`ray.address` in the config.
+
+Requirements per node:
+
+* the repository at the same absolute path (or `pip install -e .` plus the
+  `examples` package on every node),
+* the same conda env with matching `torch`/`ray` versions,
+* network reachability plus open Ray ports (GCS 6379, dashboard 8265, and
+  the worker port range around 10001-10999),
+* GPUs visible to the container (`nvidia-smi`).
+
+Cluster startup (one node becomes the head):
+
+```bash
+# on the head node
+ray start --head --port=6379 --dashboard-host 0.0.0.0
+
+# on every worker node
+ray start --address=<head-ip>:6379
+```
+
+Run the federated experiment from the head (driver side); set the address in
+the config:
+
+```yaml
+ray:
+  address: "<head-ip>:6379"
+  num_cpus: 8
+  num_gpus: 0.25
+```
+
+Verification: the entry prints `ray cluster nodes: N` at startup and every
+actor reports `node_id`/`node_ip` in its `get_device_info` output — placement
+is verified per actor, per node, instead of trusting resource declarations.
+Results are written by the driver and land on the head node's local
+`results/`; for shared access mount the same volume on all nodes.
+
 ## Where the pieces live
 
 * `tianshou/federated/` — the platform: coordinator, client actor, adapters,

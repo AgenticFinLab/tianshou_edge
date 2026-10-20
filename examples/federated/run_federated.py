@@ -129,7 +129,13 @@ def main() -> None:
 
     import ray  # lazy import so --help works without ray
 
-    ray.init(ignore_reinit_error=True)
+    if cfg.ray.address:
+        # Multi-node: join the existing cluster (head node started elsewhere
+        # with `ray start --head`; workers join with `ray start --address=...`).
+        ray.init(address=cfg.ray.address, ignore_reinit_error=True)
+    else:
+        ray.init(ignore_reinit_error=True)
+    print(f"ray cluster nodes: {len(ray.nodes())}")
     try:
         csv_path = Path(cfg.output.csv_path)
         csv_path.parent.mkdir(parents=True, exist_ok=True)
