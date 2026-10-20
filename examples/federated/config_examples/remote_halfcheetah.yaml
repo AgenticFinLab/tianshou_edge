@@ -1,0 +1,35 @@
+# Remote-container clients served through the single-port bridge.
+algorithm: sac
+env: halfcheetah
+seeds: [42]
+device: cuda
+clients_count: 4
+envs_per_client: 1
+buffer_size: 200000
+warmup_steps: 2000
+aggregation: fedavg
+agg_scope: all
+fedprox_mu: 0.0
+heterogeneity:
+  gravity: 9.8
+algorithm_config:
+  hidden_sizes: [256, 256]
+  lr: 0.001
+  tau: 0.005
+  alpha: 0.2
+budget:
+  rounds: 20
+  collect_per_update: 1
+  updates_per_round: 100
+  batch_size: 256
+evaluation:
+  every_rounds: 5
+  episodes: 5
+# NOTE: the remote container's Ray detects only 4 CPUs (cgroup limit).
+# 4 clients x num_cpus=0.5 = 2.0 leaves headroom; larger values make
+# actor construction stall silently waiting for CPU slots.
+ray:
+  num_cpus: 0.5
+  num_gpus: 0.25
+output:
+  csv_path: results/remote_halfcheetah.csv

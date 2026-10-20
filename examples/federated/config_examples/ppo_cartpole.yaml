@@ -1,0 +1,34 @@
+# Federated PPO on gravity-heterogeneous CartPole.
+algorithm: ppo
+env: cartpole
+seeds: [42]
+device: cpu
+clients_count: 3
+envs_per_client: 4
+buffer_size: 20000
+aggregation: fedavg
+agg_scope: all
+fedprox_mu: 0.0
+heterogeneity:
+  gravity: [9.3, 9.8, 10.3]
+algorithm_config:
+  hidden_sizes: [64, 64]
+  lr: 0.001
+  gamma: 0.99
+  gae_lambda: 0.95
+  eps_clip: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+budget:
+  rounds: 20
+  collect_per_update: 1000
+  updates_per_round: 4
+  batch_size: 64
+evaluation:
+  every_rounds: 2
+  episodes: 10
+ray:
+  num_cpus: 1
+  num_gpus: 0
+output:
+  csv_path: results/ppo_cartpole_fed.csv

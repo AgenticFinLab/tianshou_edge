@@ -1,0 +1,33 @@
+# Federated DQN on gravity-heterogeneous CartPole.
+algorithm: dqn
+env: cartpole
+seeds: [42]
+device: cpu
+clients_count: 3
+envs_per_client: 4
+buffer_size: 10000
+aggregation: fedavg
+agg_scope: all          # DQN shares the online Q network only; scope is ignored
+fedprox_mu: 0.0
+heterogeneity:
+  gravity: [9.3, 9.8, 10.3]
+algorithm_config:
+  hidden_sizes: [64, 64]
+  lr: 0.001
+  gamma: 0.9
+  n_step: 3
+  target_update_freq: 320
+  eps_training: 0.1
+budget:
+  rounds: 30
+  collect_per_update: 100
+  updates_per_round: 10
+  batch_size: 64
+evaluation:
+  every_rounds: 2
+  episodes: 10
+ray:
+  num_cpus: 1
+  num_gpus: 0
+output:
+  csv_path: results/dqn_cartpole_fed.csv
