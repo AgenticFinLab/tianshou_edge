@@ -226,9 +226,10 @@ class SACFederatedAdapter(OffPolicyFederatedAdapter):
     ACTOR_PREFIX = "policy.actor."
 
     def __init__(self, algorithm: Algorithm, agg_scope: str = "all") -> None:
-        if agg_scope not in ("all", "actor_only"):
+        if agg_scope not in ("all", "actor_only", "critic_only"):
             raise ValueError(
-                f"unknown agg_scope {agg_scope!r}, expected 'all' or 'actor_only'"
+                f"unknown agg_scope {agg_scope!r}, expected 'all', 'actor_only', "
+                f"or 'critic_only'"
             )
         super().__init__(
             algorithm,
@@ -242,6 +243,11 @@ class SACFederatedAdapter(OffPolicyFederatedAdapter):
     def shared_keys(self) -> list[str] | None:
         if self.agg_scope == "actor_only":
             return [self.ACTOR_PREFIX]
+        if self.agg_scope == "critic_only":
+            # Share the online critics only; target critics and the actor
+            # stay client-local (targets re-track via the local Polyak
+            # update as training proceeds).
+            return ["critic.", "critic2."]
         return None
 
     @property

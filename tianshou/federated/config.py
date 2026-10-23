@@ -92,6 +92,7 @@ class EvaluationConfig:
     every_rounds: int = 2
     episodes: int = 10
     pre_post_eval: bool = False
+    post_eval_updates: int = 0
 
 
 @dataclass
@@ -134,7 +135,7 @@ _VALID = {
     "algorithm": ("dqn", "sac", "ppo"),
     "env": ("cartpole", "pendulum", "halfcheetah", "hopper", "metaworld_reach", "metaworld_push"),
     "aggregation": ("fedavg", "local_only"),
-    "agg_scope": ("all", "actor_only"),
+    "agg_scope": ("all", "actor_only", "critic_only"),
 }
 
 

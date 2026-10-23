@@ -109,3 +109,30 @@ def test_bridge_error_propagation(ray_context) -> None:
             group._call("no_such_cmd", ())
     finally:
         server.stop()
+
+
+def test_coordinator_post_k_delayed_shock_probe(ray_context) -> None:
+    """The delayed-shock probe splits the round budget and records eval_post_k."""
+    ray = ray_context
+    actors = [build_actor(i) for i in range(2)]
+    server, port = start_server(actors, ray)
+    try:
+        groups = [RemoteClientGroup(client_id=i, host="127.0.0.1", port=port)
+                  for i in range(2)]
+        coordinator = FederatedCoordinator(groups)
+        history = coordinator.run(
+            num_rounds=1,
+            budget=LocalBudget(50, 10, 32),
+            eval_every=1,
+            eval_n_episode=1,
+            eval_pre_post=True,
+            post_eval_updates=3,
+            verbose=False,
+        )
+        summary = history[0]
+        assert "eval_post_k" in summary, "post_k probe missing from summary"
+        assert "eval_pre" in summary and "eval_post" in summary
+        # The split budget must preserve the total env-step accounting.
+        assert summary["total_env_steps"] == 2 * 50 * 10
+    finally:
+        server.stop()

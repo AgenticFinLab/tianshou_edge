@@ -129,3 +129,13 @@ def test_prox_prefixes_restricted_to_actor() -> None:
     for agg_scope in ("all", "actor_only"):
         adapter = SACFederatedAdapter(algo, agg_scope=agg_scope)
         assert adapter.prox_prefixes == ["policy.actor."]
+
+def test_agg_scope_critic_only_shares_critics_only() -> None:
+    algo = make_pendulum_sac()
+    adapter = SACFederatedAdapter(algo, agg_scope="critic_only")
+    payload = adapter.get_shared_state()
+    assert payload and all(
+        name.startswith("critic.") or name.startswith("critic2.") for name in payload
+    )
+    assert not any(name.startswith("policy.actor.") for name in payload)
+    assert not any("_old." in name for name in payload)

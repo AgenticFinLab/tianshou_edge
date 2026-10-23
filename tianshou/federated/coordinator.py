@@ -63,6 +63,7 @@ class FederatedCoordinator:
         verbose: bool = True,
         on_round: Any | None = None,
         eval_pre_post: bool = False,
+        post_eval_updates: int = 0,
         checkpoint_dir: str | None = None,
         resume_from: str | None = None,
         resume_mode: str = "full",
@@ -87,6 +88,11 @@ class FederatedCoordinator:
             before the weight sync and right after it (before local
             training), recording ``eval_pre`` / ``eval_post`` per client in
             the summary. Off by default: it doubles the evaluation traffic.
+        :param post_eval_updates: with ``eval_pre_post``, also run this many
+            gradient updates after the sync and evaluate again, recording
+            ``eval_post_k``. This separates the immediate shock (post) from
+            the delayed effect that reaches the policy through gradient
+            coupling (post_k); the updates count toward the round budget.
         :param checkpoint_dir: if given, a checkpoint is written after every
             round (full client state; see
             :mod:`tianshou.federated.persistence`).
@@ -130,6 +136,7 @@ class FederatedCoordinator:
                     for i in selected_indices
                 ]
 
+            probe_steps = 0
             if eval_pre_post:
                 pre = self._evaluate_selected(selected_indices, eval_n_episode)
                 self._ray.get([
@@ -137,9 +144,33 @@ class FederatedCoordinator:
                     for i, ref in zip(selected_indices, per_client_refs, strict=True)
                 ])
                 post = self._evaluate_selected(selected_indices, eval_n_episode)
-                updates = self._ray.get([
-                    self.clients[i].local_train.remote(budget) for i in selected_indices
-                ])
+                post_k = None
+                if 0 < post_eval_updates < budget.num_updates:
+                    # Delayed-shock probe: train a fraction of the round
+                    # budget, evaluate, then finish the round normally.
+                    k_budget = LocalBudget(
+                        num_env_steps_per_update=budget.num_env_steps_per_update,
+                        num_updates=post_eval_updates,
+                        batch_size=budget.batch_size,
+                    )
+                    k_updates = self._ray.get([
+                        self.clients[i].local_train.remote(k_budget) for i in selected_indices
+                    ])
+                    probe_steps = sum(u.num_steps for u in k_updates)
+                    post_k = self._evaluate_selected(selected_indices, eval_n_episode)
+                    rest_budget = LocalBudget(
+                        num_env_steps_per_update=budget.num_env_steps_per_update,
+                        num_updates=budget.num_updates - post_eval_updates,
+                        batch_size=budget.batch_size,
+                    )
+                    updates = self._ray.get([
+                        self.clients[i].local_train.remote(rest_budget)
+                        for i in selected_indices
+                    ])
+                else:
+                    updates = self._ray.get([
+                        self.clients[i].local_train.remote(budget) for i in selected_indices
+                    ])
             else:
                 updates = self._ray.get([
                     self.clients[i].local_train_round.remote(ref, budget)
@@ -152,11 +183,15 @@ class FederatedCoordinator:
                 self.global_weights = fedavg_aggregate(updates)
 
             summary = self._make_summary(round_idx, updates)
+            if probe_steps:
+                summary["total_env_steps"] += probe_steps
             if eval_every is not None and round_idx % eval_every == 0:
                 summary["eval_returns"] = self._evaluate_all(eval_n_episode)
             if eval_pre_post:
                 summary["eval_pre"] = pre
                 summary["eval_post"] = post
+                if post_k is not None:
+                    summary["eval_post_k"] = post_k
             history.append(summary)
             if on_round is not None:
                 on_round(summary)

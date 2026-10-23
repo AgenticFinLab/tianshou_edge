@@ -180,6 +180,7 @@ def main() -> None:
                 seed=seed,
                 on_round=on_round,
                 eval_pre_post=cfg.evaluation.pre_post_eval,
+                post_eval_updates=cfg.evaluation.post_eval_updates,
                 checkpoint_dir=cfg.output.checkpoint_dir,
                 resume_from=args.resume,
                 resume_mode=args.resume_mode,
