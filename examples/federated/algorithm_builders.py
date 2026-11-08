@@ -7,7 +7,9 @@ Single source of truth for the DQN (CartPole), SAC (Pendulum), and PPO
 from __future__ import annotations
 
 import gymnasium as gym
+import numpy as np
 import torch
+import torch.nn as nn
 from gymnasium import Env
 from torch.distributions import Categorical, Distribution
 
@@ -118,10 +120,10 @@ def make_metaworld_env_fn(task: str):
 
         mt1 = metaworld.MT1(task)
         env = mt1.train_classes[task]()
-        # metaworld internal: train envs must be unfrozen to sample fresh
-        # goals, and set_task must be called before the first step.
-        env._freeze_rand_vec = False
+        # set_task freezes the goal's rand vec, so the unfreeze must come
+        # AFTER it; otherwise every reset replays the same single goal.
         env.set_task(mt1.train_tasks[0])
+        env._freeze_rand_vec = False
         return env
 
     return _make
@@ -133,14 +135,27 @@ def build_sac_metaworld(
     hidden_sizes: list[int] | None = None,
     tau: float = 0.005,
     alpha: float = 0.2,
+    auto_alpha: bool = False,
+    n_step_return_horizon: int = 3,
 ):
-    """Build a SAC for a Meta-World task (CPU); the caller moves it to a device."""
+    """Build a SAC for a Meta-World task (CPU); the caller moves it to a device.
+
+    The actor uses an unbounded mean (the tanh squash and its log-prob
+    correction are applied once, inside the policy) and a state-conditioned
+    sigma. The critics use LayerNorm trunks. Passing hidden_sizes to both the
+    preprocess net and the outer module would silently stack twice the
+    depth, so the outer modules keep only their output heads here.
+    """
     if hidden_sizes is None:
         hidden_sizes = [256, 256]
     env = make_metaworld_env_fn(task)()
     space_info = SpaceInfo.from_env(env)
     obs_shape = space_info.observation_info.obs_shape
     action_shape = space_info.action_info.action_shape
+    if auto_alpha:
+        from tianshou.algorithm.modelfree.sac import AutoAlpha
+
+        alpha = AutoAlpha(-np.prod(action_shape), -2.3, AdamOptimizerFactory(lr=lr))
 
     def make_critic() -> ContinuousCritic:
         return ContinuousCritic(
@@ -149,14 +164,17 @@ def build_sac_metaworld(
                 action_shape=action_shape,
                 hidden_sizes=hidden_sizes,
                 concat=True,
+                norm_layer=nn.LayerNorm,
             ),
-            hidden_sizes=hidden_sizes,
+            hidden_sizes=(),
         )
 
     actor = ContinuousActorProbabilistic(
         preprocess_net=Net(state_shape=obs_shape, hidden_sizes=hidden_sizes),
         action_shape=action_shape,
-        hidden_sizes=hidden_sizes,
+        hidden_sizes=(),
+        unbounded=True,
+        conditioned_sigma=True,
     )
     policy = SACPolicy(actor=actor, action_space=env.action_space, deterministic_eval=True)
     env.close()
@@ -170,6 +188,7 @@ def build_sac_metaworld(
         tau=tau,
         gamma=0.99,
         alpha=alpha,
+        n_step_return_horizon=n_step_return_horizon,
     )
 
 

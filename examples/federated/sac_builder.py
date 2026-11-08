@@ -63,13 +63,13 @@ def build_pendulum_sac(
                 hidden_sizes=hidden_sizes,
                 concat=True,
             ),
-            hidden_sizes=hidden_sizes,
+            hidden_sizes=(),
         )
 
     actor = ContinuousActorProbabilistic(
         preprocess_net=Net(state_shape=obs_shape, hidden_sizes=hidden_sizes),
         action_shape=action_shape,
-        hidden_sizes=hidden_sizes,
+        hidden_sizes=(),
     )
     critic1 = make_critic()
     critic2 = make_critic()  # independent initialization, no twin degeneracy
